@@ -3,21 +3,16 @@
 //приемный буфер
 u08 nRF_RX_buf = 0;
 
-void nRF_init(void)						
+void nRF_init()						
 {
 	/*НАСТРОЙКА ПОРТОВ*/
 	spi_DDR &=~(1<<MISO);				// MISO на вход
 	spi_DDR |= 1<<SCK|1<<MOSI|1<<SS;	// все остальное на выход
 	spi_PORT &=~(1<<SCK|1<<MOSI);		// SCK и MOSI в 0
 	spi_PORT |= 1<<MISO|1<<SS;			// SS в 1, а для MISO включена подтяжка
-	//cbi(DDR_IRQ,IRQ);					// IRQ на вход
 	sbi(DDR_CE,CE);						// CE на выход
-	//sbi(PORT_IRQ,IRQ);					// Подтяжка для IRQ по умолчанию всегда поднят
 	cbi(PORT_CE,CE);					// CE на 0, по умолчанию прижат
 
-	/*Настройка прерывания IRQ*/
-	//PCICR |= 1<<PCIE1; //включаем прерывание по переключению пинов 1 группы (порт С) PCINT[14:8]
-	//PCMSK1 |= 1<<IRQ;  //включаем проверку пина IRQ 
 
 	/*Настройка SPI*/ 
 	SPCR = (0<<SPIE)|(1<<SPE)|(0<<DORD)|(1<<MSTR)|(0<<CPOL)|(0<<CPHA)|(0<<SPR1)|(0<<SPR0);
@@ -52,9 +47,11 @@ void nRF_init(void)
 	        SPI2X - Удвоение скорости обмена.*/
 
 	//Настроим радиомодуль nRF на прием.
+	WriteReg(ACTIVATE, 0x73); //активируем регистр FEATURE и спец команды
+	WriteReg(FEATURE, 1<<EN_ACK_PAY); // режим передачи данных вместе с ответом на прием
+	WriteReg(RX_PW_P0, 2);//размер поля данных 2 байта.
     WriteReg(CONFIG,(1<<PWR_UP)|(1<<EN_CRC)|(0<<PRIM_RX));
     _delay_ms(2);
-    WriteReg(RX_PW_P0, 2);//размер поля данных 1 байт.
 	RXmod();//на прием
 	
 }
@@ -90,11 +87,13 @@ void ReadData(u08 *data, u08 size)
 void WriteReg(u08 addr,u08 byte)	
 {
     cbi(spi_PORT,SS); 			//Прижимаем вывод CSN(SS) МК к земле, тем самым сообщаем о начале обмена данных.
-    SPDR = addr | W_REGISTER;	//накладываем маску записи на адрес и засылаем;
+    if (addr != ACTIVATE)
+    	SPDR = addr | W_REGISTER;	//накладываем маску записи на адрес и засылаем;
+   	else
+   		SPDR = addr; 				//команду ACTIVATE посылаем без маски
     while(BitIsClear(SPSR,SPIF)); 	//ожидаем когда освободится SPI
     SPDR = byte; 				//отправляем непосредственно байт
     while(BitIsClear(SPSR,SPIF));	//ожидаем когда освободится SPI
-    addr = SPDR;				//это для сброса флага SPIF
     sbi(spi_PORT,SS); 			//Вывод CSN(SS) МК к питанию, обмен данных завершен.
 }
 
@@ -102,6 +101,19 @@ void WriteData(u08 *data, u08 size)
 {
 	cbi(spi_PORT,SS); 			//Прижимаем вывод CSN(SS) МК к земле, тем самым сообщаем о начале обмена данных.
     SPDR = W_TX_PAYLOAD;		//используем команду записи в буфер отправки;
+    while(BitIsClear(SPSR,SPIF)); 	//ожидаем когда освободится SPI
+    for (u08 i = 0; i < size; i++)
+    {
+        SPDR = data[i];					//закидываем очередной байт
+        while(BitIsClear(SPSR,SPIF));	//ожидаем когда освободится SPI
+    }
+    sbi(spi_PORT,SS); 			//Вывод CSN(SS) МК к питанию, обмен данных завершен.
+}
+
+void nRF_write_ACK_payload(u08 *data, u08 size)
+{
+	cbi(spi_PORT,SS); 			//Прижимаем вывод CSN(SS) МК к земле, тем самым сообщаем о начале обмена данных.
+    SPDR = W_ACK_PAYLOAD;		//используем команду записи в буфер отправки;
     while(BitIsClear(SPSR,SPIF)); 	//ожидаем когда освободится SPI
     for (u08 i = 0; i < size; i++)
     {
@@ -145,7 +157,6 @@ BOOL checkStatus(void)
 		WriteReg(STATUS, status);//сброс флагов прерываний - обязательно
 		if (BitIsSet(status,RX_DR)) //если этот бит равен 1 то байт принят.
 		{
-			//nRF_RX_buf = ReadReg(R_RX_PAYLOAD); //чтение 1 байта из буфера приема RX_FIFO в озу buff
 			u08 temp[2];
 			ReadData(temp, 2);
 			nRF_RX_buf = temp[0];

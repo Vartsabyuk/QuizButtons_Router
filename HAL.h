@@ -3,7 +3,6 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avrlibtypes.h>
 #include "avrlibdefs.h"
 #include "avrlibtypes.h"
 #include <avr/pgmspace.h>

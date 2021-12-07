@@ -4,6 +4,7 @@
 #include <HAL.h>
 #include <util/delay.h>
 
+
 //Конфигурация частоты работы SPI	
 
 #define spi_PORT	PORTB				// Порт где сидят ноги SPI
@@ -15,11 +16,8 @@
 
 #define PORT_CE 	PORTB
 #define DDR_CE 		DDRB
-//#define PORT_IRQ 	PORTC
-//#define DDR_IRQ 	DDRC
-//#define PIN_IRQ 	PINC
 #define CE 			2
-//#define IRQ 		1
+
 
 /*регистр STATUS*/
 #define STATUS          0x07
@@ -85,9 +83,10 @@ extern u08 ReadReg(u08 addr);
 extern void ReadData(u08 *data, u08 size);
 extern void WriteReg(u08 addr,u08 byte);
 extern void WriteData(u08 *data, u08 size);
+extern void nRF_write_ACK_payload(u08 *data, u08 size);
 extern void RXmod(void);
 extern void TXmod(void);
-extern void nRF_init(void);	
+extern void nRF_init();	
 extern void nRF_send_data(u08 *data, u08 size);
 extern BOOL checkStatus(void);
 extern u08 nRF_get_byte(void);

@@ -11,29 +11,26 @@
 	}
 #endif
 
-#define buttonID 0b00000010
-//#define delayButtonPush 5000 //задержка после нажатия кнопки в мс
+//Команды для управления кнопками
+#define activityButton 		0b01010101 // 0x55
+#define notActivityButton 	0b10101010 // 0xAA
+#define changeNumberButton	0b10011001 // 0x99
 
 // Глобальные переменные =====================================================
 
-u08 pushButtonStatus = 0;
-
+u08 nRF_TX_data[2] = {activityButton, 0x00};
+u16 delayButtonPush = 5000; //задержка после нажатия кнопки в мс
 
 // Прототипы задач ===========================================================
-void parsingUART(void);
-void parsing_nRF24(void);
+void ParsingUART(void);
+void Parsing_nRF24(void);
+void DelayButton(void);
 //============================================================================
 //Верктора прерываний 
 //============================================================================
 #ifdef __cplusplus
 	extern "C" {
 #endif
-//Прерывание изменения уровня пинов 1-й группы (порт С) PCINT[14:8]
-	/*ISR (PCINT1_vect)
-	{
-		nRF_IRQ_handler();
-		SetTask(parsing_nRF24);
-	}*/
 //RTOS Interrupt
 	ISR (RTOS_ISR)
 	{
@@ -48,7 +45,7 @@ void parsing_nRF24(void);
 	ISR (USART_RX_vect)
 	{
 		USART_RXC_Handler();
-		SetTask(parsingUART);
+		SetTask(ParsingUART);
 	}
 #ifdef __cplusplus
 	}
@@ -57,7 +54,7 @@ void parsing_nRF24(void);
 //Область задач
 //============================================================================
 
-void parsingUART(void)
+void ParsingUART(void)
 {
 	u08 temp;
 	if ((temp = USART_GetChar()))
@@ -73,23 +70,44 @@ void parsingUART(void)
 			USART_SendStr("CONFIG REG: ");
 			USART_PutChar(ReadReg(CONFIG)); 
 		}
+		/*else if (temp == 'a')
+		{
+			USART_SendStr("ACTIVITY");
+			nRF_TX_data[0] = activityButton;		
+		}
+		else if (temp == 'n')
+		{
+			USART_SendStr("NOT_ACTIVITY");
+			nRF_TX_data[0] = notActivityButton;		
+		}*/
 		else if (temp == 'b')
 		{
-			USART_SendStr("SENDING BYTE");
-			u08 TX_data[2] = {buttonID, 0xF0};
- 			nRF_send_data(TX_data, 2);
+			USART_SendStr("CHANGE_BUTTON_NUM");
+			nRF_TX_data[0] = changeNumberButton;
+			nRF_TX_data[1] = 3;
 		}
 	}
 }
 
-void parsing_nRF24(void)
+void DelayButton(void)
+{
+	nRF_TX_data[0] = activityButton;
+}
+
+void Parsing_nRF24(void)
 {
 	u08 temp;
-	if ((temp = nRF_get_byte()))
+	if (temp = nRF_get_byte())
 	{
-		USART_SendStr("RECEIVING BYTE: ");
+		USART_SendStr(" RECEIVING BYTE: ");
 		USART_SendNum(temp);
-	}
+		nRF_write_ACK_payload(nRF_TX_data, 2);
+		if (nRF_TX_data[0] == activityButton)
+		{
+			SetTimerTask(DelayButton, delayButtonPush);
+		}
+		nRF_TX_data[0] = notActivityButton;	
+	}			
 }
 //==============================================================================
 int main(void)
@@ -108,7 +126,7 @@ int main(void)
 		TaskManager();	// Вызов диспетчера
 		if (checkStatus())
 		{
-			SetTask(parsing_nRF24);
+			SetTask(Parsing_nRF24);
 		}
 	}
 
