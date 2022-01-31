@@ -16,8 +16,12 @@
 #define notActivityButton 	0b10101010 // 0xAA
 #define changeNumberButton	0b10011001 // 0x99
 
+#define first_byte_wait		1
+#define command_wait		2
+#define button_num_wait	   	3
 // Глобальные переменные =====================================================
 
+u08 parsingUART_flag = first_byte_wait;
 u08 nRF_TX_data[2] = {activityButton, 0x00};
 u16 delayButtonPush = 5000; //задержка после нажатия кнопки в мс
 
@@ -59,32 +63,48 @@ void ParsingUART(void)
 	u08 temp;
 	if ((temp = USART_GetChar()))
 	{
-		//USART_SendByte(temp);
-		if (temp == 's')
+		if (parsingUART_flag == first_byte_wait)
 		{
-			USART_SendStr("STATUS REG: ");
-			USART_PutChar(ReadReg(STATUS));
+			if (temp == 0xFF)
+			{
+				parsingUART_flag = command_wait;
+			}
+			else if (temp == 0xF0)
+			{
+				parsingUART_flag = button_num_wait;
+			}
 		}
-		else if (temp == 'c')
+		else
 		{
-			USART_SendStr("CONFIG REG: ");
-			USART_PutChar(ReadReg(CONFIG)); 
-		}
-		/*else if (temp == 'a')
-		{
-			USART_SendStr("ACTIVITY");
-			nRF_TX_data[0] = activityButton;		
-		}
-		else if (temp == 'n')
-		{
-			USART_SendStr("NOT_ACTIVITY");
-			nRF_TX_data[0] = notActivityButton;		
-		}*/
-		else if (temp == 'b')
-		{
-			USART_SendStr("CHANGE_BUTTON_NUM");
-			nRF_TX_data[0] = changeNumberButton;
-			nRF_TX_data[1] = 3;
+			u08 sendData[3];
+			sendData[0] = 0x0F;
+			sendData[1] = temp;
+			sendData[2] = 0;
+			if (parsingUART_flag == command_wait)
+			{
+				if (temp == 0xFF) //PING
+				{
+					delayButtonPush = 0;
+					nRF_TX_data[0] = activityButton;
+				}
+				else if (temp == 0x01) //ACTIVITY
+				{
+					nRF_TX_data[0] = activityButton;
+				}
+				else if (temp == 0x02) //NOT ACTIVITY
+				{
+					nRF_TX_data[0] = notActivityButton;
+				}
+			}
+			else if (parsingUART_flag == button_num_wait)
+			{
+				sendData[0] = 0x02;
+				nRF_TX_data[0] = changeNumberButton;
+				nRF_TX_data[1] = temp;
+				
+			}
+			parsingUART_flag = first_byte_wait;
+			USART_SendStr(sendData);
 		}
 	}
 }
@@ -96,15 +116,26 @@ void DelayButton(void)
 
 void Parsing_nRF24(void)
 {
-	u08 temp;
-	if (temp = nRF_get_byte())
+	u08 temp[3];
+	temp[0] = 0x01;
+	temp[2] = 0;
+	if (temp[1] = nRF_get_byte())
 	{
-		USART_SendStr(" RECEIVING BYTE: ");
-		USART_SendNum(temp);
+		//USART_SendStr(" RECEIVING BYTE: ");
+		//USART_SendNum(temp);
 		nRF_write_ACK_payload(nRF_TX_data, 2);
 		if (nRF_TX_data[0] == activityButton)
 		{
-			SetTimerTask(DelayButton, delayButtonPush);
+			USART_SendStr(temp);
+			if (delayButtonPush != 0)
+			{
+				SetTimerTask(DelayButton, delayButtonPush);
+			}
+		}
+		else if (nRF_TX_data[0] == changeNumberButton)
+		{
+			temp[0] = 0x03;
+			USART_SendStr(temp);
 		}
 		nRF_TX_data[0] = notActivityButton;	
 	}			
